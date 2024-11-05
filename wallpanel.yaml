@@ -41,6 +41,8 @@ wifi:
 
 captive_portal:
   
+captive_portal:
+  
 
 script:
   - id: undim_script
@@ -50,12 +52,20 @@ script:
           id: Retroiluminacion
           brightness: 70%
       - delay: 15 sec
-      - light.turn_on: 
-          id: Retroiluminacion
-          brightness: 15% 
-      - delay: 15 sec
-      - light.turn_off:
-          id: Retroiluminacion
+      # Verificar si la pantalla está encendida antes de bajar el brillo
+      - if:
+          condition:
+            light.is_on: Retroiluminacion  # Verifica si Retroiluminacion está encendida
+          then:
+            # Si Retroiluminacion está encendida, esperar y bajar el brillo
+            - light.turn_on: 
+                id: Retroiluminacion
+                brightness: 15%
+            
+            # Esperar antes de apagar la retroiluminación
+            - delay: 15 sec
+            - light.turn_off:
+                id: Retroiluminacion
 
 binary_sensor:
   - platform: gpio
