@@ -18,6 +18,17 @@ substitutions:
   img5: "imgEnchufe"
   img6: "imgEnchufeOff"
 
+globals:
+  - id: historial_notificaciones
+    type: std::vector<std::string>
+    restore_value: false
+    initial_value: 'std::vector<std::string>()'
+
+
+
+
+
+
 
 esphome:
   name: wallpanel
@@ -70,6 +81,8 @@ script:
                 brightness: 13%
             
 
+
+
 binary_sensor:
   - platform: gpio
     pin: 33
@@ -81,6 +94,13 @@ binary_sensor:
     name: "Boton 2"
     id: boton_2
     device_class: motion
+    on_press:
+      then:
+        - lambda: |-
+              if (id(boton_9).state) {
+              id(historial_notificaciones).clear();
+              ESP_LOGI("historial", "Historial limpiado por combinación de Botón 9 + Botón 8.");
+              }
   - platform: gpio
     pin: 27
     name: "Boton 3"
@@ -116,7 +136,14 @@ binary_sensor:
     name: "Boton 9"
     id: boton_9
     device_class: motion
-  
+    on_press:
+      then:
+        - display.page.show: notification_page
+        - component.update: pantalla
+    on_release:
+      then:
+        - display.page.show: main_page
+        - component.update: pantalla
 i2c:
   id: i2c_bus_intern
   sda: 18
@@ -166,51 +193,69 @@ spi:
 display:
   - platform: ili9xxx
     invert_colors: false
+    id: pantalla
     model: ST7796
     cs_pin: GPIO15
     dc_pin: GPIO21
     reset_pin: GPIO22
     rotation: 180
-    lambda: |-
-      it.print(60,20, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text1}");
-      it.print(18,90, id(fntSml), my_white, id(ha_${sensor3}).state.c_str());
-      if (id(ha_${sensor1}).state == "on") {
-      it.image(20, 20, id(${img2}),my_yellow);
-      } 
-      else {
-      it.image(20, 20, id(${img1}),my_white);
-      }
+    pages:
+      - id: main_page 
+        lambda: |-
+          it.print(60,20, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text1}");
+          it.print(18,90, id(fntSml), my_white, id(ha_${sensor3}).state.c_str());
+          if (id(ha_${sensor1}).state == "on") {
+          it.image(20, 20, id(${img2}),my_yellow);
+          } 
+          else {
+          it.image(20, 20, id(${img1}),my_white);
+          }
 
 
 
-      it.print(230,20, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text2}");
-      if (id(ha_${sensor2}).state == "on") {
-      it.image(190, 20, id(${img2}),my_yellow);
-      } 
-      else {
-      it.image(190, 20, id(${img1}),my_white);
-      }
+          it.print(230,20, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text2}");
+          if (id(ha_${sensor2}).state == "on") {
+          it.image(190, 20, id(${img2}),my_yellow);
+          } 
+          else {
+          it.image(190, 20, id(${img1}),my_white);
+          }
 
 
-      it.print(60,150, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text3}");
-      if (id(ha_${sensor4}).state == "on") {
-      it.image(20, 150, id(${img4}),my_yellow);
-      } 
-      else {
-      it.image(20, 150, id(${img3}),my_white);
-      }
+          it.print(60,150, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text3}");
+          if (id(ha_${sensor4}).state == "on") {
+          it.image(20, 150, id(${img4}),my_yellow);
+          } 
+          else {
+          it.image(20, 150, id(${img3}),my_white);
+          }
 
-      it.print(230,150, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text4}");
-      if (id(ha_${sensor5}).state == "on") {
-      it.image(190, 150, id(${img5}),my_yellow);
-      } 
-      else {
-      it.image(190, 150, id(${img6}),my_white);
-      }
+          it.print(230,150, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text4}");
+          if (id(ha_${sensor5}).state == "on") {
+          it.image(190, 150, id(${img5}),my_yellow);
+          } 
+          else {
+          it.image(190, 150, id(${img6}),my_white);
+          }
 
 
-      it.printf(20, 420, id(fntSml), "Consumo PC: %.0f W", id(consumo_pc).state);
-      it.printf(20, 450, id(fntSml), "Luminosidad: %.0f lx", id(luminosidad).state);
+          it.printf(20, 420, id(fntSml), "Consumo PC: %.0f W", id(consumo_pc).state);
+          it.printf(20, 450, id(fntSml), "Luminosidad: %.0f lx", id(luminosidad).state);
+           // Mostrar última notificación
+          it.printf(20, 380, id(fntSml), my_white, "Ultima notificacion:");
+          it.printf(20, 400, id(fntSml), my_white, id(notificacion_wallpanel).state.c_str());
+
+      - id: notification_page
+        lambda: |-
+            // HISTORIAL DE NOTIFICACIONES
+            it.print(120, 10, id(fntSml), my_white, TextAlign::TOP_CENTER, "Historial de Notificaciones");
+            int y = 40;
+            int max_notis = 10;
+            int start = id(historial_notificaciones).size() > max_notis ? id(historial_notificaciones).size() - max_notis : 0;
+            for (int i = start; i < id(historial_notificaciones).size(); i++) {
+              it.printf(20, y, id(fntSml), my_white, "%s", id(historial_notificaciones)[i].c_str());
+              y += 20;
+            }
 
 image:
   - file: mdi:door
@@ -252,9 +297,16 @@ text_sensor:
     entity_id: ${type3}.${sensor5}
     id: ha_${sensor5}
     internal: True
-
-
-
+  - platform: homeassistant
+    entity_id: input_text.notificacion_wallpanel
+    id: notificacion_wallpanel
+    on_value:
+      then:
+        - lambda: |-
+            if (id(historial_notificaciones).size() >= 10) {  // Máximo 10 notificaciones
+              id(historial_notificaciones).erase(id(historial_notificaciones).begin());
+            }
+            id(historial_notificaciones).push_back(x);
 sensor:
   - platform: homeassistant
     name: "Consumo PC"
