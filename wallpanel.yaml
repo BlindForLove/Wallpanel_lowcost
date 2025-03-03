@@ -2,12 +2,21 @@ substitutions:
   sensor1: "sensor_habitacion_contact"
   sensor2: "taller_apertura_contact" 
   sensor3: "habitacion_last_updated"
+  sensor4: "sensor_ventana_contact"
+  sensor5: "ventilador"
   text1: "Habitacion" 
   text2: "Taller"
+  text3: "Ventana"
+  text4: "enchufe"
   type1: "binary_sensor"
   type2: "sensor"
+  type3: "switch"
   img1: "imgPuerta"
   img2: "imgPuertaAbierta"
+  img3: "imgVentana"
+  img4: "imgVentanaAbierta"
+  img5: "imgEnchufe"
+  img6: "imgEnchufeOff"
 
 
 esphome:
@@ -24,7 +33,7 @@ logger:
 
 api:
   encryption:
-    key: !secret api
+    key: "HMujJJMlH/0sA2rpW7f1tN2T1dKaLd2XZTozhrEUOs4="
 
 ota:
   - platform: esphome
@@ -39,8 +48,6 @@ wifi:
     ssid: "Wallpanel Fallback Hotspot"
     password: "OkGCbimxCQVG"
 
-captive_portal:
-  
 captive_portal:
   
 
@@ -60,12 +67,8 @@ script:
             # Si Retroiluminacion está encendida, esperar y bajar el brillo
             - light.turn_on: 
                 id: Retroiluminacion
-                brightness: 15%
+                brightness: 13%
             
-            # Esperar antes de apagar la retroiluminación
-            - delay: 15 sec
-            - light.turn_off:
-                id: Retroiluminacion
 
 binary_sensor:
   - platform: gpio
@@ -162,6 +165,7 @@ spi:
   miso_pin: GPIO12
 display:
   - platform: ili9xxx
+    invert_colors: false
     model: ST7796
     cs_pin: GPIO15
     dc_pin: GPIO21
@@ -188,8 +192,25 @@ display:
       }
 
 
+      it.print(60,150, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text3}");
+      if (id(ha_${sensor4}).state == "on") {
+      it.image(20, 150, id(${img4}),my_yellow);
+      } 
+      else {
+      it.image(20, 150, id(${img3}),my_white);
+      }
+
+      it.print(230,150, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text4}");
+      if (id(ha_${sensor5}).state == "on") {
+      it.image(190, 150, id(${img5}),my_yellow);
+      } 
+      else {
+      it.image(190, 150, id(${img6}),my_white);
+      }
+
 
       it.printf(20, 420, id(fntSml), "Consumo PC: %.0f W", id(consumo_pc).state);
+      it.printf(20, 450, id(fntSml), "Luminosidad: %.0f lx", id(luminosidad).state);
 
 image:
   - file: mdi:door
@@ -197,6 +218,18 @@ image:
     resize: 76x70
   - file: mdi:door-open
     id: imgPuertaAbierta
+    resize: 76x70
+  - file: mdi:window-closed
+    id: imgVentana
+    resize: 76x70
+  - file: mdi:window-open
+    id: imgVentanaAbierta
+    resize: 76x70
+  - file: mdi:power-plug
+    id: imgEnchufe
+    resize: 76x70
+  - file: mdi:power-plug-off
+    id: imgEnchufeOff
     resize: 76x70
 text_sensor:
   - platform: homeassistant
@@ -208,15 +241,29 @@ text_sensor:
     id: ha_${sensor2}
     internal: True
   - platform: homeassistant
+    entity_id: ${type1}.${sensor4}
+    id: ha_${sensor4}
+    internal: True
+  - platform: homeassistant
     entity_id: ${type2}.${sensor3}
     id: ha_${sensor3}
     internal: True
+  - platform: homeassistant
+    entity_id: ${type3}.${sensor5}
+    id: ha_${sensor5}
+    internal: True
+
+
 
 sensor:
   - platform: homeassistant
     name: "Consumo PC"
     entity_id: "sensor.enchufe_pc_power"
     id: consumo_pc
+  - platform: homeassistant
+    name: "Luminosidad Cuarto"
+    entity_id: "sensor.pir_dormitorio_illuminance"
+    id: luminosidad
 
 font:
   - file:
