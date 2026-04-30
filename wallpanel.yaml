@@ -3,7 +3,8 @@ substitutions:
   sensor2: "taller_apertura_contact" 
   sensor3: "habitacion_last_updated"
   sensor4: "sensor_ventana_contact"
-  sensor5: "ventilador"
+  sensor5: "enchufe_cuarto_2"
+  sensor6: "casa"
   text1: "Habitacion" 
   text2: "Taller"
   text3: "Ventana"
@@ -33,7 +34,8 @@ globals:
 esphome:
   name: wallpanel
   friendly_name: wallpanel
-
+psram:
+  
 esp32:
   board: esp32dev
   framework:
@@ -237,13 +239,18 @@ display:
           else {
           it.image(190, 150, id(${img6}),my_white);
           }
+          //Consumo Enchufe debajo del icono
+          it.printf(210, 220, id(fntSml), "%.0f W", id(consumo_enchufe_2).state);
 
-
-          it.printf(20, 420, id(fntSml), "Consumo PC: %.0f W", id(consumo_pc).state);
-          it.printf(20, 450, id(fntSml), "Luminosidad: %.0f lx", id(luminosidad).state);
            // Mostrar última notificación
-          it.printf(20, 380, id(fntSml), my_white, "Ultima notificacion:");
-          it.printf(20, 400, id(fntSml), my_white, id(notificacion_wallpanel).state.c_str());
+          it.printf(20, 330, id(fntSml), my_white, "Ultima notificacion:");
+          it.printf(20, 350, id(fntSml), my_white, id(notificacion_wallpanel).state.c_str());
+
+          it.printf(20, 370, id(fntSml), "Consumo PC: %.0f W", id(consumo_pc).state);
+          it.printf(20, 400, id(fntSml), "Luminosidad: %.0f lx", id(luminosidad).state);
+          it.printf(20, 420, id(fntSml), "Consumo Casa: %.0f W", id(consumo_casa).state);
+
+
 
       - id: notification_page
         lambda: |-
@@ -259,21 +266,27 @@ display:
 
 image:
   - file: mdi:door
+    type: GRAYSCALE
     id: imgPuerta
     resize: 76x70
   - file: mdi:door-open
     id: imgPuertaAbierta
+    type: GRAYSCALE
     resize: 76x70
   - file: mdi:window-closed
     id: imgVentana
+    type: GRAYSCALE
     resize: 76x70
   - file: mdi:window-open
     id: imgVentanaAbierta
+    type: GRAYSCALE
     resize: 76x70
   - file: mdi:power-plug
+    type: GRAYSCALE
     id: imgEnchufe
     resize: 76x70
   - file: mdi:power-plug-off
+    type: GRAYSCALE
     id: imgEnchufeOff
     resize: 76x70
 text_sensor:
@@ -316,6 +329,14 @@ sensor:
     name: "Luminosidad Cuarto"
     entity_id: "sensor.pir_dormitorio_illuminance"
     id: luminosidad
+  - platform: homeassistant
+    name: "consumo Enchufe 2"
+    entity_id: "sensor.enchufe_cuarto_2_power"
+    id: consumo_enchufe_2
+  - platform: homeassistant
+    name: "consumo Casa"
+    entity_id: "sensor.medidor_energetico_power"
+    id: consumo_casa
 
 font:
   - file:
