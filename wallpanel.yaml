@@ -1,47 +1,27 @@
 substitutions:
   sensor1: "sensor_habitacion_contact"
-  sensor2: "taller_apertura_contact" 
-  sensor3: "habitacion_last_updated"
+  sensor2: "taller_apertura_contact"
   sensor4: "sensor_ventana_contact"
   sensor5: "enchufe_cuarto_2"
-  sensor6: "casa"
-  text1: "Habitacion" 
-  text2: "Taller"
-  text3: "Ventana"
-  text4: "enchufe"
   type1: "binary_sensor"
-  type2: "sensor"
   type3: "switch"
-  img1: "imgPuerta"
-  img2: "imgPuertaAbierta"
-  img3: "imgVentana"
-  img4: "imgVentanaAbierta"
-  img5: "imgEnchufe"
-  img6: "imgEnchufeOff"
 
 globals:
-  - id: historial_notificaciones
-    type: std::vector<std::string>
-    restore_value: false
-    initial_value: 'std::vector<std::string>()'
-
-
-
-
-
-
+  - id: screensaver_active
+    type: bool
+    initial_value: 'false'
 
 esphome:
   name: wallpanel
   friendly_name: wallpanel
+
 psram:
-  
+
 esp32:
   board: esp32dev
   framework:
-    type: arduino
+    type: esp-idf
 
-# Enable logging
 logger:
 
 api:
@@ -55,35 +35,43 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-
-  # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "Wallpanel Fallback Hotspot"
     password: "OkGCbimxCQVG"
 
 captive_portal:
-  
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: "Europe/Madrid"
+    on_time:
+      - seconds: 0
+        then:
+          - if:
+              condition:
+                lambda: 'return id(screensaver_active);'
+              then:
+                - lambda: |-
+                    lv_label_set_text(id(lbl_clock), id(sntp_time).now().strftime("%H:%M").c_str());
 
 script:
-  - id: undim_script
+  - id: inactivity_script
     mode: restart
     then:
-      - light.turn_on: 
+      - light.turn_on:
           id: Retroiluminacion
           brightness: 70%
-      - delay: 15 sec
-      # Verificar si la pantalla está encendida antes de bajar el brillo
-      - if:
-          condition:
-            light.is_on: Retroiluminacion  # Verifica si Retroiluminacion está encendida
-          then:
-            # Si Retroiluminacion está encendida, esperar y bajar el brillo
-            - light.turn_on: 
-                id: Retroiluminacion
-                brightness: 13%
-            
-
-
+      - delay: 30s
+      - globals.set:
+          id: screensaver_active
+          value: 'true'
+      - lambda: |-
+          lv_label_set_text(id(lbl_clock), id(sntp_time).now().strftime("%H:%M").c_str());
+      - lvgl.page.show: screensaver_page
+      - light.turn_on:
+          id: Retroiluminacion
+          brightness: 15%
 
 binary_sensor:
   - platform: gpio
@@ -91,61 +79,75 @@ binary_sensor:
     name: "Boton 1"
     id: boton_1
     device_class: motion
+    on_press:
+      - script.execute: inactivity_script
   - platform: gpio
     pin: 32
     name: "Boton 2"
     id: boton_2
     device_class: motion
     on_press:
-      then:
-        - lambda: |-
-              if (id(boton_9).state) {
-              id(historial_notificaciones).clear();
-              ESP_LOGI("historial", "Historial limpiado por combinación de Botón 9 + Botón 8.");
-              }
+      - script.execute: inactivity_script
   - platform: gpio
     pin: 27
     name: "Boton 3"
     id: boton_3
     device_class: motion
+    on_press:
+      - script.execute: inactivity_script
   - platform: gpio
     pin: 34
     name: "Boton 4"
     id: boton_4
     device_class: motion
+    on_press:
+      - script.execute: inactivity_script
   - platform: gpio
     pin: 35
     name: "Boton 5"
     id: boton_5
     device_class: motion
+    on_press:
+      - script.execute: inactivity_script
   - platform: gpio
     pin: 2
     name: "Boton 6"
     id: boton_6
     device_class: motion
+    on_press:
+      - script.execute: inactivity_script
   - platform: gpio
     pin: 4
     name: "Boton 7"
     id: boton_7
     device_class: motion
+    on_press:
+      - script.execute: inactivity_script
   - platform: gpio
     pin: 25
     name: "Boton 8"
     id: boton_8
     device_class: motion
+    on_press:
+      - script.execute: inactivity_script
   - platform: gpio
     pin: 5
     name: "Boton 9"
     id: boton_9
     device_class: motion
     on_press:
-      then:
-        - display.page.show: notification_page
-        - component.update: pantalla
-    on_release:
-      then:
-        - display.page.show: main_page
-        - component.update: pantalla
+      - script.execute: inactivity_script
+      - if:
+          condition:
+            lambda: 'return !id(screensaver_active);'
+          then:
+            - lvgl.page.show: control_page
+          else:
+            - globals.set:
+                id: screensaver_active
+                value: 'false'
+            - lvgl.page.show: main_page
+
 i2c:
   id: i2c_bus_intern
   sda: 18
@@ -156,42 +158,37 @@ output:
   - platform: ledc
     pin: GPIO23
     id: tst_Backlight
+
 light:
   - platform: monochromatic
     name: "Retroiluminacion"
-    output: tst_Backlight    
+    output: tst_Backlight
     id: Retroiluminacion
     restore_mode: ALWAYS_ON
     on_turn_on:
-      - script.execute: undim_script
+      - script.execute: inactivity_script
 
 touchscreen:
   - platform: ft63x6
     id: pantalla_touch
     i2c_id: i2c_bus_intern
     interrupt_pin: GPIO39
-#    transform:
-#      swap_xy: true
-#      mirror_x: true
-#    calibration:
-#      x_min: 0
-#      x_max: 319
-#      y_min: 479
-#      y_max: 0
     on_touch:
-      - script.execute: undim_script
-#      - lambda: |-
-#            ESP_LOGI("cal", "x=%d, y=%d, x_raw=%d, y_raw=%0d",
-#                touch.x,
-#                touch.y,
-#                touch.x_raw,
-#                touch.y_raw
-#                );     
+      - script.execute: inactivity_script
+      - if:
+          condition:
+            lambda: 'return id(screensaver_active);'
+          then:
+            - globals.set:
+                id: screensaver_active
+                value: 'false'
+            - lvgl.page.show: main_page
 
 spi:
   clk_pin: GPIO14
   mosi_pin: GPIO13
   miso_pin: GPIO12
+
 display:
   - platform: ili9xxx
     invert_colors: false
@@ -201,167 +198,472 @@ display:
     dc_pin: GPIO21
     reset_pin: GPIO22
     rotation: 180
-    pages:
-      - id: main_page 
-        lambda: |-
-          it.print(60,20, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text1}");
-          it.print(18,90, id(fntSml), my_white, id(ha_${sensor3}).state.c_str());
-          if (id(ha_${sensor1}).state == "on") {
-          it.image(20, 20, id(${img2}),my_yellow);
-          } 
-          else {
-          it.image(20, 20, id(${img1}),my_white);
-          }
+    auto_clear_enabled: false
+    update_interval: never
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_s
+    size: 14
+    bpp: 4
+    glyphs: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 :.,%-+<>°áéíóúÁÉÍÓÚñÑ"
+  - file: "gfonts://Roboto"
+    id: font_m
+    size: 18
+    bpp: 4
+    glyphs: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 :.,%-+<>°áéíóúÁÉÍÓÚñÑ"
+  - file: "gfonts://Roboto"
+    id: font_l
+    size: 22
+    bpp: 4
+    glyphs: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 :.,%-+<>°áéíóúÁÉÍÓÚñÑ"
+  - file: "gfonts://Roboto"
+    id: font_clock
+    size: 80
+    bpp: 4
+    glyphs: "0123456789:"
+  - file: "https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_40
+    size: 40
+    bpp: 4
+    glyphs:
+      - "\U000F081A"  # door
+      - "\U000F081B"  # door-open
+      - "\U000F0E28"  # window-closed
+      - "\U000F0E2A"  # window-open
+      - "\U000F06A5"  # power-plug
+      - "\U000F06A6"  # power-plug-off
+      - "\U000F0335"  # lightbulb
+      - "\U000F0336"  # lightbulb-off-outline
+
+lvgl:
+  displays:
+    - pantalla
+  touchscreens:
+    - pantalla_touch
+
+  style_definitions:
+    - id: card_style
+      bg_color: 0x1E1E2E
+      bg_opa: COVER
+      radius: 12
+      border_width: 1
+      border_color: 0x383860
+      pad_all: 10
+
+    - id: card_alert_style
+      bg_color: 0x2A1800
+      bg_opa: COVER
+      radius: 12
+      border_width: 2
+      border_color: 0xFFAA00
+      pad_all: 10
+
+    - id: bottombar_style
+      bg_color: 0x0A0A14
+      bg_opa: COVER
+      radius: 0
+      border_width: 0
+      border_color: 0x1E1E3A
+      pad_all: 0
+
+  pages:
+
+    # ── PÁGINA PRINCIPAL (320×480 portrait) ──────────────────────
+    # Cuadrícula 2×2: cada tarjeta 148×140 px
+    # Total ancho: 4 + 148 + 8 + 148 + 12 = 320
+    # Total alto cards: 4 + 140 + 4 + 140 = 288 → bottom desde y=292
+    - id: main_page
+      scrollable: false
+      bg_color: 0x0D0D1A
+      bg_opa: COVER
+      widgets:
+
+        # Tarjeta Habitación (fila 1, col 1)
+        - obj:
+            id: card_habitacion
+            x: 4
+            y: 4
+            width: 148
+            height: 140
+            styles: card_style
+            widgets:
+              - label:
+                  id: icon_hab
+                  align: TOP_MID
+                  y: 6
+                  text_font: mdi_40
+                  text_color: 0xFFFFFF
+                  text: "\U000F081A"
+              - label:
+                  align: TOP_MID
+                  y: 52
+                  text_font: font_s
+                  text_color: 0x7777AA
+                  text: "Habitacion"
+              - label:
+                  id: lbl_hab_estado
+                  align: TOP_MID
+                  y: 72
+                  text_font: font_m
+                  text_color: 0x4CAF50
+                  text: "..."
+
+        # Tarjeta Taller (fila 1, col 2)
+        - obj:
+            id: card_taller
+            x: 160
+            y: 4
+            width: 148
+            height: 140
+            styles: card_style
+            widgets:
+              - label:
+                  id: icon_taller
+                  align: TOP_MID
+                  y: 6
+                  text_font: mdi_40
+                  text_color: 0xFFFFFF
+                  text: "\U000F081A"
+              - label:
+                  align: TOP_MID
+                  y: 52
+                  text_font: font_s
+                  text_color: 0x7777AA
+                  text: "Taller"
+              - label:
+                  id: lbl_taller_estado
+                  align: TOP_MID
+                  y: 72
+                  text_font: font_m
+                  text_color: 0x4CAF50
+                  text: "..."
+
+        # Tarjeta Ventana (fila 2, col 1)
+        - obj:
+            id: card_ventana
+            x: 4
+            y: 148
+            width: 148
+            height: 140
+            styles: card_style
+            widgets:
+              - label:
+                  id: icon_ventana
+                  align: TOP_MID
+                  y: 6
+                  text_font: mdi_40
+                  text_color: 0xFFFFFF
+                  text: "\U000F0E28"
+              - label:
+                  align: TOP_MID
+                  y: 52
+                  text_font: font_s
+                  text_color: 0x7777AA
+                  text: "Ventana"
+              - label:
+                  id: lbl_ventana_estado
+                  align: TOP_MID
+                  y: 72
+                  text_font: font_m
+                  text_color: 0x4CAF50
+                  text: "..."
+
+        # Tarjeta Enchufe (fila 2, col 2)
+        - obj:
+            id: card_enchufe
+            x: 160
+            y: 148
+            width: 148
+            height: 140
+            styles: card_style
+            widgets:
+              - label:
+                  id: icon_enchufe
+                  align: TOP_MID
+                  y: 6
+                  text_font: mdi_40
+                  text_color: 0x555566
+                  text: "\U000F06A6"
+              - label:
+                  align: TOP_MID
+                  y: 52
+                  text_font: font_s
+                  text_color: 0x7777AA
+                  text: "Enchufe"
+              - label:
+                  id: lbl_enchufe_estado
+                  align: TOP_MID
+                  y: 72
+                  text_font: font_s
+                  text_color: 0x555566
+                  text: "..."
+              - label:
+                  id: lbl_consumo_enchufe
+                  align: TOP_MID
+                  y: 94
+                  text_font: font_s
+                  text_color: 0x4FC3F7
+                  text: "0 W"
+
+        # Sección inferior: consumos y luminosidad (y=292, h=188)
+        - obj:
+            x: 0
+            y: 292
+            width: 320
+            height: 188
+            styles: bottombar_style
+            widgets:
+              - label:
+                  x: 20
+                  y: 16
+                  text_font: font_s
+                  text_color: 0x444466
+                  text: "Consumo PC"
+              - label:
+                  id: lbl_consumo_pc
+                  x: 20
+                  y: 38
+                  text_font: font_m
+                  text_color: 0x6688CC
+                  text: "... W"
+              - label:
+                  x: 170
+                  y: 16
+                  text_font: font_s
+                  text_color: 0x444466
+                  text: "Consumo Casa"
+              - label:
+                  id: lbl_consumo_casa
+                  x: 170
+                  y: 38
+                  text_font: font_m
+                  text_color: 0x6688CC
+                  text: "... W"
+              - label:
+                  x: 20
+                  y: 96
+                  text_font: font_s
+                  text_color: 0x444466
+                  text: "Luminosidad"
+              - label:
+                  id: lbl_luminosidad
+                  x: 20
+                  y: 118
+                  text_font: font_m
+                  text_color: 0x6688CC
+                  text: "... lx"
 
 
+    # ── PÁGINA DE CONTROL ─────────────────────────────────────────
+    - id: control_page
+      bg_color: 0x0D0D1A
+      bg_opa: COVER
+      widgets:
 
-          it.print(230,20, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text2}");
-          if (id(ha_${sensor2}).state == "on") {
-          it.image(190, 20, id(${img2}),my_yellow);
-          } 
-          else {
-          it.image(190, 20, id(${img1}),my_white);
-          }
+        - label:
+            align: TOP_MID
+            y: 18
+            text_font: font_l
+            text_color: 0xCCCCDD
+            text: "Luz Dormitorio"
+
+        - label:
+            id: icon_luz
+            align: TOP_MID
+            y: 55
+            text_font: mdi_40
+            text_color: 0x555566
+            text: "\U000F0336"
+
+        - button:
+            id: btn_luz_toggle
+            align: CENTER
+            y: -35
+            width: 200
+            height: 50
+            checkable: true
+            on_click:
+              - homeassistant.service:
+                  service: light.toggle
+                  data:
+                    entity_id: light.shelly_dormitorio
+            widgets:
+              - label:
+                  id: lbl_btn_luz
+                  align: CENTER
+                  text_font: font_m
+                  text: "APAGADA"
 
 
-          it.print(60,150, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text3}");
-          if (id(ha_${sensor4}).state == "on") {
-          it.image(20, 150, id(${img4}),my_yellow);
-          } 
-          else {
-          it.image(20, 150, id(${img3}),my_white);
-          }
+        - button:
+            x: 10
+            y: 276
+            width: 110
+            height: 36
+            on_click:
+              - lvgl.page.show: main_page
+            widgets:
+              - label:
+                  align: CENTER
+                  text_font: font_s
+                  text: "< Volver"
 
-          it.print(230,150, id(fntSml), my_white, TextAlign::BOTTOM_CENTER, "${text4}");
-          if (id(ha_${sensor5}).state == "on") {
-          it.image(190, 150, id(${img5}),my_yellow);
-          } 
-          else {
-          it.image(190, 150, id(${img6}),my_white);
-          }
-          //Consumo Enchufe debajo del icono
-          it.printf(210, 220, id(fntSml), "%.0f W", id(consumo_enchufe_2).state);
+    # ── SALVAPANTALLAS ────────────────────────────────────────────
+    - id: screensaver_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
 
-           // Mostrar última notificación
-          it.printf(20, 330, id(fntSml), my_white, "Ultima notificacion:");
-          it.printf(20, 350, id(fntSml), my_white, id(notificacion_wallpanel).state.c_str());
+        - label:
+            id: lbl_clock
+            align: CENTER
+            y: -20
+            text_font: font_clock
+            text_color: 0xFFFFFF
+            text: "--:--"
 
-          it.printf(20, 370, id(fntSml), "Consumo PC: %.0f W", id(consumo_pc).state);
-          it.printf(20, 400, id(fntSml), "Luminosidad: %.0f lx", id(luminosidad).state);
-          it.printf(20, 420, id(fntSml), "Consumo Casa: %.0f W", id(consumo_casa).state);
+        - label:
+            align: CENTER
+            y: 68
+            text_font: font_m
+            text_color: 0x0b9df5
+            text: "Juan Assistant Wallpanel v1.5"
 
-
-
-      - id: notification_page
-        lambda: |-
-            // HISTORIAL DE NOTIFICACIONES
-            it.print(120, 10, id(fntSml), my_white, TextAlign::TOP_CENTER, "Historial de Notificaciones");
-            int y = 40;
-            int max_notis = 10;
-            int start = id(historial_notificaciones).size() > max_notis ? id(historial_notificaciones).size() - max_notis : 0;
-            for (int i = start; i < id(historial_notificaciones).size(); i++) {
-              it.printf(20, y, id(fntSml), my_white, "%s", id(historial_notificaciones)[i].c_str());
-              y += 20;
-            }
-
-image:
-  - file: mdi:door
-    type: GRAYSCALE
-    id: imgPuerta
-    resize: 76x70
-  - file: mdi:door-open
-    id: imgPuertaAbierta
-    type: GRAYSCALE
-    resize: 76x70
-  - file: mdi:window-closed
-    id: imgVentana
-    type: GRAYSCALE
-    resize: 76x70
-  - file: mdi:window-open
-    id: imgVentanaAbierta
-    type: GRAYSCALE
-    resize: 76x70
-  - file: mdi:power-plug
-    type: GRAYSCALE
-    id: imgEnchufe
-    resize: 76x70
-  - file: mdi:power-plug-off
-    type: GRAYSCALE
-    id: imgEnchufeOff
-    resize: 76x70
 text_sensor:
   - platform: homeassistant
     entity_id: ${type1}.${sensor1}
     id: ha_${sensor1}
-    internal: True
+    internal: true
+    on_value:
+      - lambda: |-
+          if (x == "on") {
+            lv_label_set_text(id(icon_hab), "\U000F081B");
+            lv_obj_set_style_text_color(id(icon_hab), lv_color_hex(0xFFAA00), LV_PART_MAIN);
+            lv_label_set_text(id(lbl_hab_estado), "ABIERTA");
+            lv_obj_set_style_text_color(id(lbl_hab_estado), lv_color_hex(0xFFAA00), LV_PART_MAIN);
+          } else {
+            lv_label_set_text(id(icon_hab), "\U000F081A");
+            lv_obj_set_style_text_color(id(icon_hab), lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+            lv_label_set_text(id(lbl_hab_estado), "CERRADA");
+            lv_obj_set_style_text_color(id(lbl_hab_estado), lv_color_hex(0x4CAF50), LV_PART_MAIN);
+          }
+
   - platform: homeassistant
     entity_id: ${type1}.${sensor2}
     id: ha_${sensor2}
-    internal: True
+    internal: true
+    on_value:
+      - lambda: |-
+          if (x == "on") {
+            lv_label_set_text(id(icon_taller), "\U000F081B");
+            lv_obj_set_style_text_color(id(icon_taller), lv_color_hex(0xFFAA00), LV_PART_MAIN);
+            lv_label_set_text(id(lbl_taller_estado), "ABIERTA");
+            lv_obj_set_style_text_color(id(lbl_taller_estado), lv_color_hex(0xFFAA00), LV_PART_MAIN);
+          } else {
+            lv_label_set_text(id(icon_taller), "\U000F081A");
+            lv_obj_set_style_text_color(id(icon_taller), lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+            lv_label_set_text(id(lbl_taller_estado), "CERRADA");
+            lv_obj_set_style_text_color(id(lbl_taller_estado), lv_color_hex(0x4CAF50), LV_PART_MAIN);
+          }
+
   - platform: homeassistant
     entity_id: ${type1}.${sensor4}
     id: ha_${sensor4}
-    internal: True
-  - platform: homeassistant
-    entity_id: ${type2}.${sensor3}
-    id: ha_${sensor3}
-    internal: True
+    internal: true
+    on_value:
+      - lambda: |-
+          if (x == "on") {
+            lv_label_set_text(id(icon_ventana), "\U000F0E2A");
+            lv_obj_set_style_text_color(id(icon_ventana), lv_color_hex(0xFFAA00), LV_PART_MAIN);
+            lv_label_set_text(id(lbl_ventana_estado), "ABIERTA");
+            lv_obj_set_style_text_color(id(lbl_ventana_estado), lv_color_hex(0xFFAA00), LV_PART_MAIN);
+          } else {
+            lv_label_set_text(id(icon_ventana), "\U000F0E28");
+            lv_obj_set_style_text_color(id(icon_ventana), lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+            lv_label_set_text(id(lbl_ventana_estado), "CERRADA");
+            lv_obj_set_style_text_color(id(lbl_ventana_estado), lv_color_hex(0x4CAF50), LV_PART_MAIN);
+          }
+
   - platform: homeassistant
     entity_id: ${type3}.${sensor5}
     id: ha_${sensor5}
-    internal: True
-  - platform: homeassistant
-    entity_id: input_text.notificacion_wallpanel
-    id: notificacion_wallpanel
+    internal: true
     on_value:
-      then:
-        - lambda: |-
-            if (id(historial_notificaciones).size() >= 10) {  // Máximo 10 notificaciones
-              id(historial_notificaciones).erase(id(historial_notificaciones).begin());
-            }
-            id(historial_notificaciones).push_back(x);
+      - lambda: |-
+          if (x == "on") {
+            lv_label_set_text(id(icon_enchufe), "\U000F06A5");
+            lv_obj_set_style_text_color(id(icon_enchufe), lv_color_hex(0x4CAF50), LV_PART_MAIN);
+            lv_label_set_text(id(lbl_enchufe_estado), "ENCENDIDO");
+            lv_obj_set_style_text_color(id(lbl_enchufe_estado), lv_color_hex(0x4CAF50), LV_PART_MAIN);
+          } else {
+            lv_label_set_text(id(icon_enchufe), "\U000F06A6");
+            lv_obj_set_style_text_color(id(icon_enchufe), lv_color_hex(0x555566), LV_PART_MAIN);
+            lv_label_set_text(id(lbl_enchufe_estado), "APAGADO");
+            lv_obj_set_style_text_color(id(lbl_enchufe_estado), lv_color_hex(0x555566), LV_PART_MAIN);
+          }
+
+  - platform: homeassistant
+    entity_id: light.shelly_dormitorio
+    id: luz_dormitorio_estado
+    internal: true
+    on_value:
+      - lambda: |-
+          if (x == "on") {
+            lv_label_set_text(id(icon_luz), "\U000F0335");
+            lv_obj_set_style_text_color(id(icon_luz), lv_color_hex(0xFFD700), LV_PART_MAIN);
+            lv_label_set_text(id(lbl_btn_luz), "ENCENDIDA");
+            lv_obj_add_state(id(btn_luz_toggle), LV_STATE_CHECKED);
+          } else {
+            lv_label_set_text(id(icon_luz), "\U000F0336");
+            lv_obj_set_style_text_color(id(icon_luz), lv_color_hex(0x555566), LV_PART_MAIN);
+            lv_label_set_text(id(lbl_btn_luz), "APAGADA");
+            lv_obj_clear_state(id(btn_luz_toggle), LV_STATE_CHECKED);
+          }
+
 sensor:
   - platform: homeassistant
     name: "Consumo PC"
     entity_id: "sensor.enchufe_pc_power"
     id: consumo_pc
+    on_value:
+      - lambda: |-
+          char buf[24];
+          snprintf(buf, sizeof(buf), "PC: %.0f W", x);
+          lv_label_set_text(id(lbl_consumo_pc), buf);
+
   - platform: homeassistant
     name: "Luminosidad Cuarto"
     entity_id: "sensor.pir_dormitorio_illuminance"
     id: luminosidad
+    on_value:
+      - lambda: |-
+          char buf[16];
+          snprintf(buf, sizeof(buf), "%.0f lx", x);
+          lv_label_set_text(id(lbl_luminosidad), buf);
+
   - platform: homeassistant
-    name: "consumo Enchufe 2"
+    name: "Consumo Enchufe 2"
     entity_id: "sensor.enchufe_cuarto_2_power"
     id: consumo_enchufe_2
+    on_value:
+      - lambda: |-
+          char buf[16];
+          snprintf(buf, sizeof(buf), "%.0f W", x);
+          lv_label_set_text(id(lbl_consumo_enchufe), buf);
+
   - platform: homeassistant
-    name: "consumo Casa"
+    name: "Consumo Casa"
     entity_id: "sensor.medidor_energetico_power"
     id: consumo_casa
+    on_value:
+      - lambda: |-
+          char buf[24];
+          snprintf(buf, sizeof(buf), "Casa: %.0f W", x);
+          lv_label_set_text(id(lbl_consumo_casa), buf);
 
-font:
-  - file:
-      type: gfonts
-      family: "Roboto"
-    id: fntXS
-    size: 8
-    glyphs: 0123456789:. °m
-  - file:
-      type: gfonts
-      family: "Roboto"
-    id: fntSml
-    size: 18
-
-
-color:
-  - id: my_white
-    red: 100%
-    green: 100%
-    blue: 100%
-  - id: my_grey
-    red: 50%
-    green: 50%
-    blue: 50%
-  - id: my_yellow
-    red: 75%
-    green: 75%
-    blue: 0%
+  - platform: homeassistant
+    entity_id: light.shelly_dormitorio
+    attribute: onoff
+    id: luz_dormitorio_brillo
+    internal: true
